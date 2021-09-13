@@ -31,7 +31,7 @@ static int config_zone_attach_sensors(struct zone *z, config_setting_t *zone)
                 continue;
 
             if (!config_setting_lookup_string(sensor, "path", &path)) {
-                DBG("config: skipping sensor with no path");
+                DBG("config: skipping sensor with no path\n");
                 continue;
             }
 
