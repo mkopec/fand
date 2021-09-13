@@ -9,5 +9,5 @@ struct fan {
 };
 
 int fan_update(struct fan *f, int sensor_val);
-struct fan *fan_create (char *hwmon_path, int index, struct curve *c);
+struct fan *fan_create (const char *hwmon_path, int index, struct curve *c);
 void fan_destroy (struct fan *f);

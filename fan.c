@@ -27,7 +27,7 @@ int fan_update(struct fan *f, int sensor_val)
     return fan_set_duty_cycle(f, curve_get_value(f->curve, sensor_val));
 }
 
-struct fan *fan_create (char *hwmon_path, int index, struct curve *c)
+struct fan *fan_create (const char *hwmon_path, int index, struct curve *c)
 {
     struct fan *f = malloc(sizeof(struct fan));
 

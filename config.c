@@ -13,7 +13,7 @@ struct fand_config {
     int zones_len;
 };
 
-int config_zone_attach_sensors(struct zone *z, config_setting_t *zone)
+static int config_zone_attach_sensors(struct zone *z, config_setting_t *zone)
 {
     config_setting_t *sensors;
 
@@ -24,7 +24,7 @@ int config_zone_attach_sensors(struct zone *z, config_setting_t *zone)
         int i;
         for (i = 0; i < count; ++i) {
             int index, offset;
-            char *path;
+            const char *path;
             config_setting_t *sensor = config_setting_get_elem(sensors, i);
             config_setting_lookup_string(sensor, "path", &path);
             config_setting_lookup_int(sensor, "index", &index);
@@ -32,9 +32,10 @@ int config_zone_attach_sensors(struct zone *z, config_setting_t *zone)
             zone_attach_sensor(z, sensor_create(path, index, offset));
         }
     }
+    return 0;
 }
 
-int config_zone_attach_fans(struct zone *z, config_setting_t *zone)
+static int config_zone_attach_fans(struct zone *z, config_setting_t *zone)
 {
     config_setting_t *fans;
 
@@ -45,41 +46,41 @@ int config_zone_attach_fans(struct zone *z, config_setting_t *zone)
         int i;
         for (i = 0; i < count; ++i) {
             int index;
-            char *path;
+            const char *path;
             int *t, *p;
-            int tc;
+            int count;
             config_setting_t *fan = config_setting_get_elem(fans, i);
             config_setting_lookup_string(fan, "path", &path);
             config_setting_lookup_int(fan, "index", &index);
             config_setting_t *curve = config_setting_get_member(fan, "curve");
             config_setting_t *temperatures = config_setting_get_member(curve, "temperatures");
             config_setting_t *pwm = config_setting_get_member(curve, "pwm");
-            tc = config_setting_length(temperatures);
-            t = malloc(tc * sizeof(int));
-            for (int j = 0; j < tc; ++j) {
+            count = config_setting_length(temperatures);
+            t = malloc(count * sizeof(int));
+            for (int j = 0; j < count; ++j) {
                 t[j] = config_setting_get_int_elem(temperatures, j);
             }
-            p = malloc(tc * sizeof(int));
-            for (int j = 0; j < tc; ++j) {
+            p = malloc(count * sizeof(int));
+            for (int j = 0; j < count; ++j) {
                 p[j] = config_setting_get_int_elem(pwm, j);
             }
 
-            zone_attach_fan(z, fan_create(path, index, curve_create(t, p, tc)));
+            zone_attach_fan(z, fan_create(path, index, curve_create(t, p, count)));
 
             free (t);
             free (p);
         }
     }
+    return 0;
 }
 
-struct fand_config *fand_config_create(char *cfg_path)
+struct fand_config *fand_config_load(const char *cfg_path)
 {
     struct fand_config *cfg = malloc(sizeof(struct fand_config));
     cfg->zones_len = 0;
 
     config_t ct;
     config_setting_t *setting;
-    const char *s;
 
     config_init(&ct);
 

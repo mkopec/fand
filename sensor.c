@@ -21,7 +21,7 @@ int sensor_poll (struct sensor *s)
     return (val / 1000) + s->offset;
 }
 
-struct sensor *sensor_create (char *hwmon_path, int index, int offset)
+struct sensor *sensor_create (const char *hwmon_path, int index, int offset)
 {
     struct sensor *s = malloc(sizeof(struct sensor));
 

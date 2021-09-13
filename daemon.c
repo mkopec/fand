@@ -8,18 +8,23 @@
 
 int main()
 {
-	struct config *cfg = fand_config_create("fand.conf");
+	bool quit = false;
+	int state = 0;
+	
+	struct config *cfg = fand_config_load("fand.conf");
 
 	if (!cfg)
 		return EXIT_FAILURE;
 
-	bool quit = false;
 
 	while (!quit)
 	{
 		for (int i = 0; i < cfg->zones_len; ++i)
 		{
-			int state = zone_update(cfg->zones[i]);
+			state = zone_update(cfg->zones[i]);
+
+			if (state != 0)
+				quit = true;
 		}
 
 		sleep(1);

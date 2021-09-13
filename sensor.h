@@ -8,5 +8,5 @@ struct sensor {
 };
 
 int sensor_poll (struct sensor *s);
-struct sensor *sensor_create (char *hwmon_path, int index, int offset);
+struct sensor *sensor_create (const char *hwmon_path, int index, int offset);
 void sensor_destroy (struct sensor *s);

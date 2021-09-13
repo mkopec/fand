@@ -6,5 +6,5 @@ struct config {
     int zones_len;
 };
 
-struct config *fand_config_create(char *cfg_path);
+struct config *fand_config_load(const char *cfg_path);
 void fand_config_destroy(struct config *cfg);
