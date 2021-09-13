@@ -10,12 +10,15 @@ int main()
 {
 	bool quit = false;
 	int state = 0;
-	
+
+	DBG("fand %s starting\n", FAND_VERSION);
+
 	struct config *cfg = fand_config_load("fand.conf");
 
-	if (!cfg)
+	if (cfg == NULL) {
+		DBG("daemon: failed to load config, exiting\n");
 		return EXIT_FAILURE;
-
+	}
 
 	while (!quit)
 	{
@@ -23,12 +26,14 @@ int main()
 		{
 			state = zone_update(cfg->zones[i]);
 
-			if (state != 0)
+			if (state == 0)
 				quit = true;
 		}
 
 		sleep(1);
 	}
+
+	fand_config_destroy(cfg);
 
 	return EXIT_SUCCESS;
 }

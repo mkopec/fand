@@ -28,7 +28,7 @@ int zone_attach_fan(struct zone *z, struct fan *f)
 
     z->fans_len++;
 
-    return z->fans_len;    
+    return z->fans_len;
 }
 
 int zone_attach_sensor(struct zone *z, struct sensor *s)
@@ -40,7 +40,7 @@ int zone_attach_sensor(struct zone *z, struct sensor *s)
 
     z->sensors_len++;
 
-    return z->sensors_len;    
+    return z->sensors_len;
 }
 
 int zone_update(struct zone *z)
@@ -52,7 +52,7 @@ int zone_update(struct zone *z)
 
     for (i = 0; i < z->fans_len; ++i) {
         status = fan_update(z->fans[i], sensor_val);
-        if (!status)
+        if (status)
             rv = status;
     }
 

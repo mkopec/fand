@@ -16,7 +16,7 @@ static int fan_set_duty_cycle(struct fan *f, int duty_cycle)
     if (fd == NULL)
         return -1;
 
-    fprintf (fd, "%d\n", duty_cycle);
+    rv = fprintf (fd, "%d\n", duty_cycle);
 
     fclose (fd);
     return rv;

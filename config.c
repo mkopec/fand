@@ -26,10 +26,26 @@ static int config_zone_attach_sensors(struct zone *z, config_setting_t *zone)
             int index, offset;
             const char *path;
             config_setting_t *sensor = config_setting_get_elem(sensors, i);
-            config_setting_lookup_string(sensor, "path", &path);
-            config_setting_lookup_int(sensor, "index", &index);
-            config_setting_lookup_int(sensor, "offset", &offset);
+
+            if (sensor == NULL)
+                continue;
+
+            if (!config_setting_lookup_string(sensor, "path", &path)) {
+                DBG("config: skipping sensor with no path");
+                continue;
+            }
+
+            if (!config_setting_lookup_int(sensor, "index", &index)) {
+                DBG("config: sensor at %s has no index, skipping\n", path);
+                continue;
+            }
+
+            if (!config_setting_lookup_int(sensor, "offset", &offset)) {
+                offset = 0;
+            }
+
             zone_attach_sensor(z, sensor_create(path, index, offset));
+            DBG("Adding sensor at %s, index %d\n", path, index);
         }
     }
     return 0;
@@ -50,22 +66,60 @@ static int config_zone_attach_fans(struct zone *z, config_setting_t *zone)
             int *t, *p;
             int count;
             config_setting_t *fan = config_setting_get_elem(fans, i);
-            config_setting_lookup_string(fan, "path", &path);
-            config_setting_lookup_int(fan, "index", &index);
+
+            if (fan == NULL)
+                continue;
+
+            if (!config_setting_lookup_string(fan, "path", &path)) {
+                DBG("config: skipping fan with no path\n");
+                continue;
+            }
+
+            if (!config_setting_lookup_int(fan, "index", &index)) {
+                DBG("config: fan at %s has no index, skipping\n", path);
+                continue;
+            }
+
             config_setting_t *curve = config_setting_get_member(fan, "curve");
+            if (curve == NULL) {
+                DBG("config: fan at %s index %d has no curve, skipping\n",
+                    path, index);
+                continue;
+            }
+
             config_setting_t *temperatures = config_setting_get_member(curve, "temperatures");
-            config_setting_t *pwm = config_setting_get_member(curve, "pwm");
+            if (temperatures == NULL) {
+                DBG("config: fan at %s index %d has no temperatures, skipping\n",
+                    path, index);
+                continue;
+            }
+
+            config_setting_t *speeds = config_setting_get_member(curve, "speeds");
+            if (speeds == NULL) {
+                DBG("config: fan at %s index %d has no speeds, skipping\n",
+                    path, index);
+                continue;
+            }
+
             count = config_setting_length(temperatures);
+            if (config_setting_length(speeds) != count) {
+                DBG("config: fan at %s index %d has wrongly formatted curve, skipping\n",
+                    path, index);
+                continue;
+            }
+
             t = malloc(count * sizeof(int));
             for (int j = 0; j < count; ++j) {
                 t[j] = config_setting_get_int_elem(temperatures, j);
             }
+
             p = malloc(count * sizeof(int));
             for (int j = 0; j < count; ++j) {
-                p[j] = config_setting_get_int_elem(pwm, j);
+                p[j] = config_setting_get_int_elem(speeds, j);
             }
 
             zone_attach_fan(z, fan_create(path, index, curve_create(t, p, count)));
+            DBG("Adding fan at %s, index %d\n", path, index);
 
             free (t);
             free (p);
@@ -76,33 +130,39 @@ static int config_zone_attach_fans(struct zone *z, config_setting_t *zone)
 
 struct fand_config *fand_config_load(const char *cfg_path)
 {
-    struct fand_config *cfg = malloc(sizeof(struct fand_config));
-    cfg->zones_len = 0;
-
+    struct fand_config *cfg = NULL;
+    int i;
     config_t ct;
     config_setting_t *setting;
 
     config_init(&ct);
 
-    if(!config_read_file(&ct, cfg_path))
-        return NULL;
+    if(!config_read_file(&ct, cfg_path)) {
+        DBG("config: failed to open config file %s\n", cfg_path);
+        goto cleanup;
+    }
 
     setting = config_lookup(&ct, "zones");
 
-    if (setting != NULL) {
-        int count = config_setting_length(setting);
-        int i;
-        for (i = 0; i < count; ++i) {
-            config_setting_t *zone = config_setting_get_elem(setting, i);
-            cfg->zones[i] = zone_create();
-            config_zone_attach_sensors(cfg->zones[i], zone);
-            config_zone_attach_fans(cfg->zones[i], zone);
-        }
-        cfg->zones_len = count;
+    if (setting == NULL) {
+        DBG("config: no zones are defined\n");
+        goto cleanup;
     }
 
-    config_destroy(&ct);
+    cfg = malloc(sizeof(struct fand_config));
+    cfg->zones_len = config_setting_length(setting);
 
+    for (i = 0; i < cfg->zones_len; ++i) {
+        config_setting_t *zone = config_setting_get_elem(setting, i);
+        cfg->zones[i] = zone_create();
+        config_zone_attach_sensors(cfg->zones[i], zone);
+        config_zone_attach_fans(cfg->zones[i], zone);
+    }
+
+    DBG("configuration file read, found %d zones\n", cfg->zones_len);
+
+cleanup:
+    config_destroy(&ct);
     return cfg;
 }
 
