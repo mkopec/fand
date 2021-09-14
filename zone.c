@@ -5,10 +5,11 @@
 #include "fan.h"
 #include "sensor.h"
 
-static int max_sensor_val(struct zone *z)
+static float max_sensor_val(struct zone *z)
 {
-    int i, sensor_val;
-    int max_sensor_val = 0;
+    int i;
+    float sensor_val;
+    float max_sensor_val = 0;
 
     for (i = 0; i < z->sensors_len; ++i) {
         sensor_val = sensor_poll(z->sensors[i]);
@@ -45,7 +46,8 @@ int zone_attach_sensor(struct zone *z, struct sensor *s)
 
 int zone_update(struct zone *z)
 {
-    int i, status, rv, sensor_val;
+    int i, status, rv;
+    float sensor_val;
 
     rv = 0;
     sensor_val = max_sensor_val(z);

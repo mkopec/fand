@@ -6,12 +6,8 @@
 #include "zone.h"
 #include "sensor.h"
 #include "curve.h"
+#include "config.h"
 #include "common.h"
-
-struct fand_config {
-    struct zone *zones[MAX_ZONES];
-    int zones_len;
-};
 
 static int config_zone_attach_sensors(struct zone *z, config_setting_t *zone)
 {
@@ -166,6 +162,21 @@ cleanup:
     return cfg;
 }
 
+void fand_config_enable(struct fand_config *cfg)
+{
+    int i, j;
+    for (i = 0; i < cfg->zones_len; ++i)
+        for (j = 0; j < cfg->zones[i]->fans_len; ++j)
+            fan_enable(cfg->zones[i]->fans[j]);
+}
+
+void fand_config_disable(struct fand_config *cfg)
+{
+    int i, j;
+    for (i = 0; i < cfg->zones_len; ++i)
+        for (j = 0; j < cfg->zones[i]->fans_len; ++j)
+            fan_disable(cfg->zones[i]->fans[j]);
+}
 
 void fand_config_destroy(struct fand_config *cfg)
 {

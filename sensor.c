@@ -5,7 +5,7 @@
 #include "common.h"
 #include "sensor.h"
 
-int sensor_poll (struct sensor *s)
+float sensor_poll (struct sensor *s)
 {
     int val;
     FILE *fd;
@@ -18,7 +18,7 @@ int sensor_poll (struct sensor *s)
     fscanf (fd, "%d", &val);
 
     fclose (fd);
-    return (val / 1000) + s->offset;
+    return ((float)val / 1000) + s->offset;
 }
 
 struct sensor *sensor_create (const char *hwmon_path, int index, int offset)

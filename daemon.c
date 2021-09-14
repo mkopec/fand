@@ -13,12 +13,14 @@ int main()
 
 	DBG("fand %s starting\n", FAND_VERSION);
 
-	struct config *cfg = fand_config_load("fand.conf");
+	struct fand_config *cfg = fand_config_load("fand.conf");
 
 	if (cfg == NULL) {
 		DBG("daemon: failed to load config, exiting\n");
 		return EXIT_FAILURE;
 	}
+
+	fand_config_enable(cfg);
 
 	while (!quit)
 	{
@@ -33,6 +35,7 @@ int main()
 		sleep(1);
 	}
 
+	fand_config_disable(cfg);
 	fand_config_destroy(cfg);
 
 	return EXIT_SUCCESS;
