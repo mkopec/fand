@@ -7,3 +7,7 @@
 #define DEBUG 1
 #define DBG(fmt, ...) \
             do { if (DEBUG) fprintf(stderr, fmt  __VA_OPT__(,) __VA_ARGS__); } while (0)
+#define ERROR(fmt, ...) \
+            do { fprintf(stderr, fmt  __VA_OPT__(,) __VA_ARGS__); } while (0)
+#define INFO(fmt, ...) \
+            do { printf(fmt  __VA_OPT__(,) __VA_ARGS__); } while (0)
