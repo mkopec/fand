@@ -4,7 +4,7 @@
 
 fand is a daemon that controls the fans (and other pwm-controlled devices)
 in your system. It's main feature is its configurability, using a concept of
-"zones", similar to ACPI thermal zones.
+thermal zones.
 
 # Features
 
@@ -37,7 +37,7 @@ A simple config with one sensor and 2 fans:
 ```
 zones:
 (
-  {
+  { # Zone #1
     sensors:
     (
       { # NZXT Kraken coolant temperature
@@ -49,7 +49,7 @@ zones:
 
     fans:
     (
-      { # Motherboard fan header #1
+      { # NCT6798 fan header #1
         path: "/sys/class/hwmon/hwmon5"
         index: 1
         curve: {
@@ -57,7 +57,7 @@ zones:
           speeds: [ 55, 80, 220, 255 ]
         }
       },
-      { # Motherboard fan header #2
+      { # NCT6798 fan header #2
         path: "/sys/class/hwmon/hwmon5"
         index: 2
         curve: {
@@ -70,7 +70,7 @@ zones:
 )
 ```
 
-## Requirements
+## Dependencies
 
 - libconfig
 
