@@ -8,7 +8,7 @@ url="https://github.com/mkopec/fand"
 license=('GPL')
 makedepends=(gcc)
 provides=(fand)
-conflicts=()
+conflicts=(fand-snapshot)
 source=(*)
 sha256sums=('SKIP')
 
