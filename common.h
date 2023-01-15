@@ -1,4 +1,4 @@
-#define FAND_VERSION "0.1.0"
+#define FAND_VERSION "0.1.1"
 
 #define MAX_PATH 255
 #define MAX_ZONE_SIZE 20
