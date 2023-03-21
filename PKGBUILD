@@ -1,6 +1,6 @@
 # Maintainer: Your Name <tomasz.pakula.external@atos.net>
 pkgname=(fand)
-pkgver=1.1
+pkgver=1.2
 pkgrel=1
 pkgdesc="A tool for managing your PC's fans"
 arch=(x86_64)
