@@ -1,7 +1,7 @@
 # Maintainer: Your Name <tomasz.pakula.external@atos.net>
 pkgname=(fand)
-pkgver=1.3
-pkgrel=1
+pkgver=1.4
+pkgrel=3
 pkgdesc="A tool for managing your PC's fans"
 arch=(x86_64)
 url="https://github.com/mkopec/fand"
