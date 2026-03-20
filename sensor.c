@@ -3,6 +3,7 @@
 #include <string.h>
 
 #include "common.h"
+#include "hwmon.h"
 #include "sensor.h"
 
 float sensor_poll (struct sensor *s)
@@ -28,13 +29,17 @@ struct sensor *sensor_create (const char *hwmon_path, int index, int offset)
     if (!s)
         return NULL;
 
-    s->hwmon_path = strdup(hwmon_path);
+    s->hwmon_path = hwmon_resolve_path(hwmon_path);
+    if (!s->hwmon_path) {
+        free(s);
+        return NULL;
+    }
     s->index = index;
     s->offset = offset;
 
     s->temp_path = malloc(MAX_PATH * sizeof(char));
 
-    sprintf (s->temp_path, "%s/temp%d_input", hwmon_path, index);
+    sprintf (s->temp_path, "%s/temp%d_input", s->hwmon_path, index);
 
     return s;
 }
