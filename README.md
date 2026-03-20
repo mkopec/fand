@@ -34,45 +34,45 @@ This allows you to:
 
 A simple config with one sensor and 2 fans:
 
-```
+```yaml
 zones:
-(
-  { # Zone #1
+  - name: Zone #1
     sensors:
-    (
-      { # NZXT Kraken coolant temperature
-        path: "/sys/class/hwmon/hwmon7"
+      - path: /sys/class/hwmon/hwmon7  # NZXT Kraken coolant temperature
         index: 1
         offset: 0
-      }
-    )
-
     fans:
-    (
-      { # NCT6798 fan header #1
-        path: "/sys/class/hwmon/hwmon5"
+      - path: /sys/class/hwmon/hwmon5  # NCT6798 fan header #1
         index: 1
-        curve: {
-          temperatures: [ 25, 30, 37, 40 ]
-          speeds: [ 55, 80, 220, 255 ]
-        }
-      },
-      { # NCT6798 fan header #2
-        path: "/sys/class/hwmon/hwmon5"
+        curve:
+          temperatures:
+            - 25
+            - 30
+            - 37
+            - 40
+          speeds:
+            - 55
+            - 80
+            - 220
+            - 255
+      - path: /sys/class/hwmon/hwmon5  # NCT6798 fan header #2
         index: 2
-        curve: {
-          temperatures: [ 25, 30, 37, 40 ]
-          speeds: [ 55, 80, 220, 255 ]
-        }
-      }
-    )
-  }
-)
+        curve:
+          temperatures:
+            - 25
+            - 30
+            - 37
+            - 40
+          speeds:
+            - 55
+            - 80
+            - 220
+            - 255
 ```
 
 ## Dependencies
 
-- libconfig
+- libyaml
 
 ## Limitations
 
