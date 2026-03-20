@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <libconfig.h>
+#include <string.h>
+#include <yaml.h>
 
 #include "fan.h"
 #include "zone.h"
@@ -9,156 +10,464 @@
 #include "config.h"
 #include "common.h"
 
-static int config_zone_attach_sensors(struct zone *z, config_setting_t *zone)
+static int parse_int_sequence(yaml_parser_t *parser, int **out_arr, int *out_count)
 {
-    config_setting_t *sensors;
+    yaml_event_t event;
+    int *arr = NULL;
+    int count = 0;
+    int capacity = 8;
 
-    sensors = config_setting_lookup(zone, "sensors");
+    arr = malloc(capacity * sizeof(int));
+    if (!arr)
+        return 0;
 
-    if (sensors != NULL) {
-        int count = config_setting_length(sensors);
-        int i;
-        for (i = 0; i < count; ++i) {
-            int index, offset;
-            const char *path;
-            config_setting_t *sensor = config_setting_get_elem(sensors, i);
-
-            if (sensor == NULL)
-                continue;
-
-            if (!config_setting_lookup_string(sensor, "path", &path)) {
-                DBG("config: skipping sensor with no path\n");
-                continue;
-            }
-
-            if (!config_setting_lookup_int(sensor, "index", &index)) {
-                DBG("config: sensor at %s has no index, skipping\n", path);
-                continue;
-            }
-
-            if (!config_setting_lookup_int(sensor, "offset", &offset)) {
-                offset = 0;
-            }
-
-            zone_attach_sensor(z, sensor_create(path, index, offset));
-            DBG("Adding sensor at %s, index %d\n", path, index);
+    while (1) {
+        if (!yaml_parser_parse(parser, &event)) {
+            free(arr);
+            return 0;
         }
+
+        if (event.type == YAML_SEQUENCE_END_EVENT) {
+            yaml_event_delete(&event);
+            break;
+        }
+
+        if (event.type == YAML_SCALAR_EVENT) {
+            if (count >= capacity) {
+                capacity *= 2;
+                int *tmp = realloc(arr, capacity * sizeof(int));
+                if (!tmp) {
+                    yaml_event_delete(&event);
+                    free(arr);
+                    return 0;
+                }
+                arr = tmp;
+            }
+            arr[count++] = atoi((char *)event.data.scalar.value);
+        }
+        yaml_event_delete(&event);
     }
-    return 0;
+
+    *out_arr = arr;
+    *out_count = count;
+    return 1;
 }
 
-static int config_zone_attach_fans(struct zone *z, config_setting_t *zone)
+static int skip_node(yaml_parser_t *parser, yaml_event_type_t start_type)
 {
-    config_setting_t *fans;
+    yaml_event_t event;
+    int depth = 1;
 
-    fans = config_setting_lookup(zone, "fans");
+    while (depth > 0) {
+        if (!yaml_parser_parse(parser, &event))
+            return 0;
+        if (event.type == YAML_SEQUENCE_START_EVENT || event.type == YAML_MAPPING_START_EVENT)
+            depth++;
+        else if (event.type == YAML_SEQUENCE_END_EVENT || event.type == YAML_MAPPING_END_EVENT)
+            depth--;
+        yaml_event_delete(&event);
+    }
+    return 1;
+}
 
-    if (fans != NULL) {
-        int count = config_setting_length(fans);
-        int i;
-        for (i = 0; i < count; ++i) {
-            int index;
-            const char *path;
-            int *t, *p;
-            int count;
-            config_setting_t *fan = config_setting_get_elem(fans, i);
+static int parse_curve(yaml_parser_t *parser, int **out_temps, int **out_speeds, int *out_count)
+{
+    yaml_event_t event;
+    int *temps = NULL, *speeds = NULL;
+    int t_count = 0, s_count = 0;
 
-            if (fan == NULL)
-                continue;
+    /* Consume MAPPING_START */
+    if (!yaml_parser_parse(parser, &event))
+        return 0;
+    if (event.type != YAML_MAPPING_START_EVENT) {
+        yaml_event_delete(&event);
+        return 0;
+    }
+    yaml_event_delete(&event);
 
-            if (!config_setting_lookup_string(fan, "path", &path)) {
-                DBG("config: skipping fan with no path\n");
-                continue;
+    while (1) {
+        if (!yaml_parser_parse(parser, &event)) {
+            free(temps);
+            free(speeds);
+            return 0;
+        }
+
+        if (event.type == YAML_MAPPING_END_EVENT) {
+            yaml_event_delete(&event);
+            break;
+        }
+
+        if (event.type == YAML_SCALAR_EVENT) {
+            char key[64];
+            strncpy(key, (char *)event.data.scalar.value, sizeof(key) - 1);
+            key[sizeof(key) - 1] = '\0';
+            yaml_event_delete(&event);
+
+            if (!yaml_parser_parse(parser, &event)) {
+                free(temps);
+                free(speeds);
+                return 0;
             }
 
-            if (!config_setting_lookup_int(fan, "index", &index)) {
-                DBG("config: fan at %s has no index, skipping\n", path);
-                continue;
+            if (event.type == YAML_SEQUENCE_START_EVENT) {
+                yaml_event_delete(&event);
+                if (strcmp(key, "temperatures") == 0) {
+                    if (!parse_int_sequence(parser, &temps, &t_count)) {
+                        free(speeds);
+                        return 0;
+                    }
+                } else if (strcmp(key, "speeds") == 0) {
+                    if (!parse_int_sequence(parser, &speeds, &s_count)) {
+                        free(temps);
+                        return 0;
+                    }
+                } else {
+                    if (!skip_node(parser, YAML_SEQUENCE_START_EVENT)) {
+                        free(temps);
+                        free(speeds);
+                        return 0;
+                    }
+                }
+            } else {
+                yaml_event_delete(&event);
             }
-
-            config_setting_t *curve = config_setting_get_member(fan, "curve");
-            if (curve == NULL) {
-                DBG("config: fan at %s index %d has no curve, skipping\n",
-                    path, index);
-                continue;
-            }
-
-            config_setting_t *temperatures = config_setting_get_member(curve, "temperatures");
-            if (temperatures == NULL) {
-                DBG("config: fan at %s index %d has no temperatures, skipping\n",
-                    path, index);
-                continue;
-            }
-
-            config_setting_t *speeds = config_setting_get_member(curve, "speeds");
-            if (speeds == NULL) {
-                DBG("config: fan at %s index %d has no speeds, skipping\n",
-                    path, index);
-                continue;
-            }
-
-            count = config_setting_length(temperatures);
-            if (config_setting_length(speeds) != count) {
-                DBG("config: fan at %s index %d has wrongly formatted curve, skipping\n",
-                    path, index);
-                continue;
-            }
-
-            t = malloc(count * sizeof(int));
-            for (int j = 0; j < count; ++j) {
-                t[j] = config_setting_get_int_elem(temperatures, j);
-            }
-
-            p = malloc(count * sizeof(int));
-            for (int j = 0; j < count; ++j) {
-                p[j] = config_setting_get_int_elem(speeds, j);
-            }
-
-            zone_attach_fan(z, fan_create(path, index, curve_create(t, p, count)));
-            DBG("Adding fan at %s, index %d\n", path, index);
-
-            free (t);
-            free (p);
+        } else {
+            yaml_event_delete(&event);
         }
     }
-    return 0;
+
+    if (!temps || !speeds || t_count != s_count) {
+        DBG("config: curve has invalid or mismatched temperatures/speeds\n");
+        free(temps);
+        free(speeds);
+        return 0;
+    }
+
+    *out_temps = temps;
+    *out_speeds = speeds;
+    *out_count = t_count;
+    return 1;
+}
+
+static int parse_sensors(yaml_parser_t *parser, struct zone *z)
+{
+    yaml_event_t event;
+
+    while (1) {
+        if (!yaml_parser_parse(parser, &event))
+            return 0;
+
+        if (event.type == YAML_SEQUENCE_END_EVENT) {
+            yaml_event_delete(&event);
+            break;
+        }
+
+        if (event.type == YAML_MAPPING_START_EVENT) {
+            yaml_event_delete(&event);
+            char path[MAX_PATH] = "";
+            int index = -1, offset = 0;
+
+            while (1) {
+                if (!yaml_parser_parse(parser, &event))
+                    return 0;
+
+                if (event.type == YAML_MAPPING_END_EVENT) {
+                    yaml_event_delete(&event);
+                    break;
+                }
+
+                if (event.type == YAML_SCALAR_EVENT) {
+                    char key[64];
+                    strncpy(key, (char *)event.data.scalar.value, sizeof(key) - 1);
+                    key[sizeof(key) - 1] = '\0';
+                    yaml_event_delete(&event);
+
+                    if (!yaml_parser_parse(parser, &event))
+                        return 0;
+
+                    if (event.type == YAML_SCALAR_EVENT) {
+                        if (strcmp(key, "path") == 0) {
+                            strncpy(path, (char *)event.data.scalar.value, MAX_PATH - 1);
+                        } else if (strcmp(key, "index") == 0) {
+                            index = atoi((char *)event.data.scalar.value);
+                        } else if (strcmp(key, "offset") == 0) {
+                            offset = atoi((char *)event.data.scalar.value);
+                        }
+                    }
+                    yaml_event_delete(&event);
+                } else {
+                    yaml_event_delete(&event);
+                }
+            }
+
+            if (path[0] == '\0') {
+                DBG("config: skipping sensor with no path\n");
+            } else if (index < 0) {
+                DBG("config: sensor at %s has no index, skipping\n", path);
+            } else {
+                zone_attach_sensor(z, sensor_create(path, index, offset));
+                DBG("Adding sensor at %s, index %d\n", path, index);
+            }
+        } else {
+            yaml_event_delete(&event);
+        }
+    }
+    return 1;
+}
+
+static int parse_fans(yaml_parser_t *parser, struct zone *z)
+{
+    yaml_event_t event;
+
+    while (1) {
+        if (!yaml_parser_parse(parser, &event))
+            return 0;
+
+        if (event.type == YAML_SEQUENCE_END_EVENT) {
+            yaml_event_delete(&event);
+            break;
+        }
+
+        if (event.type == YAML_MAPPING_START_EVENT) {
+            yaml_event_delete(&event);
+            char path[MAX_PATH] = "";
+            int index = -1;
+            int *temps = NULL, *speeds = NULL;
+            int curve_count = 0;
+
+            while (1) {
+                if (!yaml_parser_parse(parser, &event)) {
+                    free(temps);
+                    free(speeds);
+                    return 0;
+                }
+
+                if (event.type == YAML_MAPPING_END_EVENT) {
+                    yaml_event_delete(&event);
+                    break;
+                }
+
+                if (event.type == YAML_SCALAR_EVENT) {
+                    char key[64];
+                    strncpy(key, (char *)event.data.scalar.value, sizeof(key) - 1);
+                    key[sizeof(key) - 1] = '\0';
+                    yaml_event_delete(&event);
+
+                    if (strcmp(key, "curve") == 0) {
+                        if (!parse_curve(parser, &temps, &speeds, &curve_count)) {
+                            free(temps);
+                            free(speeds);
+                            return 0;
+                        }
+                    } else {
+                        if (!yaml_parser_parse(parser, &event)) {
+                            free(temps);
+                            free(speeds);
+                            return 0;
+                        }
+                        if (event.type == YAML_SCALAR_EVENT) {
+                            if (strcmp(key, "path") == 0) {
+                                strncpy(path, (char *)event.data.scalar.value, MAX_PATH - 1);
+                            } else if (strcmp(key, "index") == 0) {
+                                index = atoi((char *)event.data.scalar.value);
+                            }
+                        }
+                        yaml_event_delete(&event);
+                    }
+                } else {
+                    yaml_event_delete(&event);
+                }
+            }
+
+            if (path[0] == '\0') {
+                DBG("config: skipping fan with no path\n");
+                free(temps);
+                free(speeds);
+            } else if (index < 0) {
+                DBG("config: fan at %s has no index, skipping\n", path);
+                free(temps);
+                free(speeds);
+            } else if (!temps || !speeds) {
+                DBG("config: fan at %s index %d has no curve, skipping\n", path, index);
+                free(temps);
+                free(speeds);
+            } else {
+                zone_attach_fan(z, fan_create(path, index, curve_create(temps, speeds, curve_count)));
+                DBG("Adding fan at %s, index %d\n", path, index);
+                free(temps);
+                free(speeds);
+            }
+        } else {
+            yaml_event_delete(&event);
+        }
+    }
+    return 1;
+}
+
+static int parse_zones(yaml_parser_t *parser, struct fand_config *cfg)
+{
+    yaml_event_t event;
+
+    while (1) {
+        if (!yaml_parser_parse(parser, &event))
+            return 0;
+
+        if (event.type == YAML_SEQUENCE_END_EVENT) {
+            yaml_event_delete(&event);
+            break;
+        }
+
+        if (event.type == YAML_MAPPING_START_EVENT) {
+            yaml_event_delete(&event);
+
+            if (cfg->zones_len >= MAX_ZONES) {
+                DBG("config: too many zones, skipping\n");
+                if (!skip_node(parser, YAML_MAPPING_START_EVENT))
+                    return 0;
+                continue;
+            }
+
+            struct zone *z = zone_create();
+
+            while (1) {
+                if (!yaml_parser_parse(parser, &event)) {
+                    zone_destroy(z);
+                    return 0;
+                }
+
+                if (event.type == YAML_MAPPING_END_EVENT) {
+                    yaml_event_delete(&event);
+                    break;
+                }
+
+                if (event.type == YAML_SCALAR_EVENT) {
+                    char key[64];
+                    strncpy(key, (char *)event.data.scalar.value, sizeof(key) - 1);
+                    key[sizeof(key) - 1] = '\0';
+                    yaml_event_delete(&event);
+
+                    if (!yaml_parser_parse(parser, &event)) {
+                        zone_destroy(z);
+                        return 0;
+                    }
+
+                    if (event.type == YAML_SEQUENCE_START_EVENT) {
+                        yaml_event_delete(&event);
+                        if (strcmp(key, "sensors") == 0) {
+                            parse_sensors(parser, z);
+                        } else if (strcmp(key, "fans") == 0) {
+                            parse_fans(parser, z);
+                        } else {
+                            if (!skip_node(parser, YAML_SEQUENCE_START_EVENT)) {
+                                zone_destroy(z);
+                                return 0;
+                            }
+                        }
+                    } else {
+                        yaml_event_delete(&event);
+                    }
+                } else {
+                    yaml_event_delete(&event);
+                }
+            }
+
+            cfg->zones[cfg->zones_len++] = z;
+        } else {
+            yaml_event_delete(&event);
+        }
+    }
+    return 1;
 }
 
 struct fand_config *fand_config_load(const char *cfg_path)
 {
     struct fand_config *cfg = NULL;
-    int i;
-    config_t ct;
-    config_setting_t *setting;
+    yaml_parser_t parser;
+    yaml_event_t event;
+    FILE *f;
 
-    config_init(&ct);
-
-    if(!config_read_file(&ct, cfg_path)) {
+    f = fopen(cfg_path, "r");
+    if (!f) {
         DBG("config: failed to open config file %s\n", cfg_path);
-        goto cleanup;
+        return NULL;
     }
 
-    setting = config_lookup(&ct, "zones");
-
-    if (setting == NULL) {
-        DBG("config: no zones are defined\n");
-        goto cleanup;
+    if (!yaml_parser_initialize(&parser)) {
+        DBG("config: failed to initialize yaml parser\n");
+        fclose(f);
+        return NULL;
     }
+
+    yaml_parser_set_input_file(&parser, f);
 
     cfg = malloc(sizeof(struct fand_config));
-    cfg->zones_len = config_setting_length(setting);
+    if (!cfg)
+        goto cleanup;
+    cfg->zones_len = 0;
 
-    for (i = 0; i < cfg->zones_len; ++i) {
-        config_setting_t *zone = config_setting_get_elem(setting, i);
-        cfg->zones[i] = zone_create();
-        config_zone_attach_sensors(cfg->zones[i], zone);
-        config_zone_attach_fans(cfg->zones[i], zone);
+    /* STREAM_START */
+    if (!yaml_parser_parse(&parser, &event))
+        goto free_cfg;
+    yaml_event_delete(&event);
+
+    /* DOCUMENT_START */
+    if (!yaml_parser_parse(&parser, &event))
+        goto free_cfg;
+    yaml_event_delete(&event);
+
+    /* root MAPPING_START */
+    if (!yaml_parser_parse(&parser, &event))
+        goto free_cfg;
+    if (event.type != YAML_MAPPING_START_EVENT) {
+        yaml_event_delete(&event);
+        goto free_cfg;
+    }
+    yaml_event_delete(&event);
+
+    while (1) {
+        if (!yaml_parser_parse(&parser, &event))
+            goto free_cfg;
+
+        if (event.type == YAML_MAPPING_END_EVENT) {
+            yaml_event_delete(&event);
+            break;
+        }
+
+        if (event.type == YAML_SCALAR_EVENT) {
+            char key[64];
+            strncpy(key, (char *)event.data.scalar.value, sizeof(key) - 1);
+            key[sizeof(key) - 1] = '\0';
+            yaml_event_delete(&event);
+
+            if (!yaml_parser_parse(&parser, &event))
+                goto free_cfg;
+
+            if (strcmp(key, "zones") == 0 && event.type == YAML_SEQUENCE_START_EVENT) {
+                yaml_event_delete(&event);
+                parse_zones(&parser, cfg);
+            } else {
+                yaml_event_delete(&event);
+            }
+        } else {
+            yaml_event_delete(&event);
+        }
+    }
+
+    if (cfg->zones_len == 0) {
+        DBG("config: no zones are defined\n");
+        goto free_cfg;
     }
 
     DBG("configuration file read, found %d zones\n", cfg->zones_len);
+    goto cleanup;
+
+free_cfg:
+    free(cfg);
+    cfg = NULL;
 
 cleanup:
-    config_destroy(&ct);
+    yaml_parser_delete(&parser);
+    fclose(f);
     return cfg;
 }
 
@@ -185,4 +494,3 @@ void fand_config_destroy(struct fand_config *cfg)
         zone_destroy(cfg->zones[i]);
     free(cfg);
 }
-
