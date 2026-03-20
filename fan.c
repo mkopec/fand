@@ -3,6 +3,7 @@
 #include <string.h>
 
 #include "common.h"
+#include "hwmon.h"
 #include "fan.h"
 #include "curve.h"
 
@@ -62,7 +63,11 @@ struct fan *fan_create (const char *hwmon_path, int index, struct curve *c)
     if (!f)
         return NULL;
 
-    f->hwmon_path = strdup(hwmon_path);
+    f->hwmon_path = hwmon_resolve_path(hwmon_path);
+    if (!f->hwmon_path) {
+        free(f);
+        return NULL;
+    }
     f->index = index;
     f->curve = c;
 
@@ -70,9 +75,9 @@ struct fan *fan_create (const char *hwmon_path, int index, struct curve *c)
     f->rpm_path = malloc(MAX_PATH * sizeof(char));
     f->pwm_enable_path = malloc(MAX_PATH * sizeof(char));
 
-    sprintf (f->pwm_path, "%s/pwm%d", hwmon_path, index);
-    sprintf (f->rpm_path, "%s/fan%d_input", hwmon_path, index);
-    sprintf (f->pwm_enable_path, "%s/pwm%d_enable", hwmon_path, index);
+    sprintf (f->pwm_path, "%s/pwm%d", f->hwmon_path, index);
+    sprintf (f->rpm_path, "%s/fan%d_input", f->hwmon_path, index);
+    sprintf (f->pwm_enable_path, "%s/pwm%d_enable", f->hwmon_path, index);
 
     return f;
 }
