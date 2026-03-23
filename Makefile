@@ -17,7 +17,6 @@ test:
 install: main
 	install -Dm755 main $(DESTDIR)$(BINDIR)/fand
 	install -Dm644 fand.service $(DESTDIR)$(UNITDIR)/fand.service
-	install -Dm644 -b config.yaml $(DESTDIR)$(SYSCONFDIR)/fand.conf
 
 uninstall:
 	rm -f $(DESTDIR)$(BINDIR)/fand
