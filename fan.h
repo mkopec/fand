@@ -7,6 +7,8 @@ struct fan {
     char    *rpm_path;
     char    *pwm_enable_path;
     struct curve *curve;
+    int     hysteresis;
+    int     last_pwm;
 };
 
 int fan_update(struct fan *f, float sensor_val);

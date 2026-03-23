@@ -10,17 +10,26 @@
 static int fan_set_duty_cycle(struct fan *f, int duty_cycle)
 {
     FILE *fd;
-    int rv = 0;
+
+    if (f->hysteresis > 0 && f->last_pwm >= 0 &&
+        abs(duty_cycle - f->last_pwm) <= f->hysteresis)
+        return 0;
 
     fd = fopen(f->pwm_path, "w");
 
-    if (fd == NULL)
+    if (fd == NULL) {
+        DBG("fan: failed to open %s\n", f->pwm_path);
         return -1;
+    }
 
-    rv = fprintf (fd, "%d\n", duty_cycle);
+    if (fprintf(fd, "%d\n", duty_cycle) < 0) {
+        fclose(fd);
+        return -1;
+    }
 
-    fclose (fd);
-    return rv;
+    fclose(fd);
+    f->last_pwm = duty_cycle;
+    return 0;
 }
 
 int fan_update(struct fan *f, float sensor_val)
@@ -31,17 +40,19 @@ int fan_update(struct fan *f, float sensor_val)
 static int fan_set_mode(struct fan *f, int mode)
 {
     FILE *fd;
-    int rv = 0;
 
     fd = fopen(f->pwm_enable_path, "w");
 
     if (fd == NULL)
         return -1;
 
-    rv = fprintf (fd, "%d\n", mode);
+    if (fprintf(fd, "%d\n", mode) < 0) {
+        fclose(fd);
+        return -1;
+    }
 
-    fclose (fd);
-    return rv;
+    fclose(fd);
+    return 0;
 }
 
 int fan_enable(struct fan *f)
@@ -70,14 +81,16 @@ struct fan *fan_create (const char *hwmon_path, int index, struct curve *c)
     }
     f->index = index;
     f->curve = c;
+    f->hysteresis = 0;
+    f->last_pwm = -1;
 
     f->pwm_path = malloc(MAX_PATH * sizeof(char));
     f->rpm_path = malloc(MAX_PATH * sizeof(char));
     f->pwm_enable_path = malloc(MAX_PATH * sizeof(char));
 
-    sprintf (f->pwm_path, "%s/pwm%d", f->hwmon_path, index);
-    sprintf (f->rpm_path, "%s/fan%d_input", f->hwmon_path, index);
-    sprintf (f->pwm_enable_path, "%s/pwm%d_enable", f->hwmon_path, index);
+    snprintf(f->pwm_path, MAX_PATH, "%s/pwm%d", f->hwmon_path, index);
+    snprintf(f->rpm_path, MAX_PATH, "%s/fan%d_input", f->hwmon_path, index);
+    snprintf(f->pwm_enable_path, MAX_PATH, "%s/pwm%d_enable", f->hwmon_path, index);
 
     return f;
 }

@@ -4,6 +4,7 @@
 struct fand_config {
     struct zone *zones[MAX_ZONES];
     int zones_len;
+    int poll_interval;
 };
 
 struct fand_config *fand_config_load(const char *cfg_path);

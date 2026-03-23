@@ -1,6 +1,8 @@
+#include <stdio.h>
+
 #define FAND_VERSION "0.1.1"
 
-#define MAX_PATH 255
+#define MAX_PATH 512
 #define MAX_ZONE_SIZE 20
 #define MAX_ZONES 20
 

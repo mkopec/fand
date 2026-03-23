@@ -58,6 +58,8 @@ static int skip_node(yaml_parser_t *parser, yaml_event_type_t start_type)
     yaml_event_t event;
     int depth = 1;
 
+    (void)start_type;
+
     while (depth > 0) {
         if (!yaml_parser_parse(parser, &event))
             return 0;
@@ -232,6 +234,7 @@ static int parse_fans(yaml_parser_t *parser, struct zone *z)
             yaml_event_delete(&event);
             char path[MAX_PATH] = "";
             int index = -1;
+            int hysteresis = 0;
             int *temps = NULL, *speeds = NULL;
             int curve_count = 0;
 
@@ -270,6 +273,8 @@ static int parse_fans(yaml_parser_t *parser, struct zone *z)
                                 strncpy(path, (char *)event.data.scalar.value, MAX_PATH - 1);
                             } else if (strcmp(key, "index") == 0) {
                                 index = atoi((char *)event.data.scalar.value);
+                            } else if (strcmp(key, "hysteresis") == 0) {
+                                hysteresis = atoi((char *)event.data.scalar.value);
                             }
                         }
                         yaml_event_delete(&event);
@@ -292,7 +297,11 @@ static int parse_fans(yaml_parser_t *parser, struct zone *z)
                 free(temps);
                 free(speeds);
             } else {
-                zone_attach_fan(z, fan_create(path, index, curve_create(temps, speeds, curve_count)));
+                struct fan *f = fan_create(path, index, curve_create(temps, speeds, curve_count));
+                if (f) {
+                    f->hysteresis = hysteresis;
+                    zone_attach_fan(z, f);
+                }
                 DBG("Adding fan at %s, index %d\n", path, index);
                 free(temps);
                 free(speeds);
@@ -328,6 +337,8 @@ static int parse_zones(yaml_parser_t *parser, struct fand_config *cfg)
             }
 
             struct zone *z = zone_create();
+            if (!z)
+                return 0;
 
             while (1) {
                 if (!yaml_parser_parse(parser, &event)) {
@@ -354,9 +365,15 @@ static int parse_zones(yaml_parser_t *parser, struct fand_config *cfg)
                     if (event.type == YAML_SEQUENCE_START_EVENT) {
                         yaml_event_delete(&event);
                         if (strcmp(key, "sensors") == 0) {
-                            parse_sensors(parser, z);
+                            if (!parse_sensors(parser, z)) {
+                                zone_destroy(z);
+                                return 0;
+                            }
                         } else if (strcmp(key, "fans") == 0) {
-                            parse_fans(parser, z);
+                            if (!parse_fans(parser, z)) {
+                                zone_destroy(z);
+                                return 0;
+                            }
                         } else {
                             if (!skip_node(parser, YAML_SEQUENCE_START_EVENT)) {
                                 zone_destroy(z);
@@ -371,7 +388,12 @@ static int parse_zones(yaml_parser_t *parser, struct fand_config *cfg)
                 }
             }
 
-            cfg->zones[cfg->zones_len++] = z;
+            if (z->fans_len == 0 || z->sensors_len == 0) {
+                DBG("config: zone has no fans or no sensors, skipping\n");
+                zone_destroy(z);
+            } else {
+                cfg->zones[cfg->zones_len++] = z;
+            }
         } else {
             yaml_event_delete(&event);
         }
@@ -404,6 +426,7 @@ struct fand_config *fand_config_load(const char *cfg_path)
     if (!cfg)
         goto cleanup;
     cfg->zones_len = 0;
+    cfg->poll_interval = 1;
 
     /* STREAM_START */
     if (!yaml_parser_parse(&parser, &event))
@@ -445,6 +468,9 @@ struct fand_config *fand_config_load(const char *cfg_path)
             if (strcmp(key, "zones") == 0 && event.type == YAML_SEQUENCE_START_EVENT) {
                 yaml_event_delete(&event);
                 parse_zones(&parser, cfg);
+            } else if (strcmp(key, "poll_interval") == 0 && event.type == YAML_SCALAR_EVENT) {
+                cfg->poll_interval = atoi((char *)event.data.scalar.value);
+                yaml_event_delete(&event);
             } else {
                 yaml_event_delete(&event);
             }

@@ -29,9 +29,12 @@ char *hwmon_resolve_path(const char *path)
         if (entry->d_name[5] < '0' || entry->d_name[5] > '9')
             continue;
 
-        resolved = malloc(MAX_PATH);
-        if (resolved)
-            snprintf(resolved, MAX_PATH, "%s/%s", path, entry->d_name);
+        {
+            size_t needed = strlen(path) + 1 + strlen(entry->d_name) + 1;
+            resolved = malloc(needed);
+            if (resolved)
+                snprintf(resolved, needed, "%s/%s", path, entry->d_name);
+        }
         break;
     }
 

@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 
 #include "common.h"
 #include "hwmon.h"
@@ -13,12 +14,18 @@ float sensor_poll (struct sensor *s)
 
     fd = fopen(s->temp_path, "r");
 
-    if (fd == NULL)
-        return -1;
+    if (fd == NULL) {
+        DBG("sensor: failed to open %s\n", s->temp_path);
+        return NAN;
+    }
 
-    fscanf (fd, "%d", &val);
+    if (fscanf(fd, "%d", &val) != 1) {
+        DBG("sensor: failed to read value from %s\n", s->temp_path);
+        fclose(fd);
+        return NAN;
+    }
 
-    fclose (fd);
+    fclose(fd);
     return ((float)val / 1000) + s->offset;
 }
 
@@ -39,7 +46,7 @@ struct sensor *sensor_create (const char *hwmon_path, int index, int offset)
 
     s->temp_path = malloc(MAX_PATH * sizeof(char));
 
-    sprintf (s->temp_path, "%s/temp%d_input", s->hwmon_path, index);
+    snprintf(s->temp_path, MAX_PATH, "%s/temp%d_input", s->hwmon_path, index);
 
     return s;
 }

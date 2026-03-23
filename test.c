@@ -1,5 +1,4 @@
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 
 #include "curve.h"
@@ -342,6 +341,125 @@ static void test_config_load_multiple_zones(void)
     remove(cfg_path);
 }
 
+static void test_curve_unsorted_inputs(void)
+{
+    int inputs[]  = {50, 30, 40};
+    int outputs[] = {255, 100, 200};
+    struct curve *c = curve_create(inputs, outputs, 3);
+    ASSERT(c == NULL);
+}
+
+static void test_curve_clamping(void)
+{
+    int inputs[]  = {30, 40};
+    int outputs[] = {0, 300};
+    struct curve *c = curve_create(inputs, outputs, 2);
+    ASSERT(c != NULL);
+    ASSERT_EQ(curve_get_value(c, 30.0f), 0);
+    ASSERT_EQ(curve_get_value(c, 100.0f), 255);
+    curve_destroy(c);
+}
+
+static void test_config_default_poll_interval(void)
+{
+    const char *cfg_path = "/tmp/fand_test_poll_default.conf";
+    FILE *f = fopen(cfg_path, "w");
+    ASSERT(f != NULL);
+    fprintf(f,
+        "zones:\n"
+        "  - sensors:\n"
+        "      - path: /sys/class/hwmon/hwmon0\n"
+        "        index: 1\n"
+        "        offset: 0\n"
+        "    fans:\n"
+        "      - path: /sys/class/hwmon/hwmon0\n"
+        "        index: 1\n"
+        "        curve:\n"
+        "          temperatures: [30, 50]\n"
+        "          speeds: [100, 255]\n"
+    );
+    fclose(f);
+    struct fand_config *cfg = fand_config_load(cfg_path);
+    ASSERT(cfg != NULL);
+    ASSERT_EQ(cfg->poll_interval, 1);
+    fand_config_destroy(cfg);
+    remove(cfg_path);
+}
+
+static void test_config_custom_poll_interval(void)
+{
+    const char *cfg_path = "/tmp/fand_test_poll_custom.conf";
+    FILE *f = fopen(cfg_path, "w");
+    ASSERT(f != NULL);
+    fprintf(f,
+        "poll_interval: 5\n"
+        "zones:\n"
+        "  - sensors:\n"
+        "      - path: /sys/class/hwmon/hwmon0\n"
+        "        index: 1\n"
+        "        offset: 0\n"
+        "    fans:\n"
+        "      - path: /sys/class/hwmon/hwmon0\n"
+        "        index: 1\n"
+        "        curve:\n"
+        "          temperatures: [30, 50]\n"
+        "          speeds: [100, 255]\n"
+    );
+    fclose(f);
+    struct fand_config *cfg = fand_config_load(cfg_path);
+    ASSERT(cfg != NULL);
+    ASSERT_EQ(cfg->poll_interval, 5);
+    fand_config_destroy(cfg);
+    remove(cfg_path);
+}
+
+static void test_config_fan_hysteresis(void)
+{
+    const char *cfg_path = "/tmp/fand_test_hyst.conf";
+    FILE *f = fopen(cfg_path, "w");
+    ASSERT(f != NULL);
+    fprintf(f,
+        "zones:\n"
+        "  - sensors:\n"
+        "      - path: /sys/class/hwmon/hwmon0\n"
+        "        index: 1\n"
+        "        offset: 0\n"
+        "    fans:\n"
+        "      - path: /sys/class/hwmon/hwmon0\n"
+        "        index: 1\n"
+        "        hysteresis: 15\n"
+        "        curve:\n"
+        "          temperatures: [30, 50]\n"
+        "          speeds: [100, 255]\n"
+    );
+    fclose(f);
+    struct fand_config *cfg = fand_config_load(cfg_path);
+    ASSERT(cfg != NULL);
+    ASSERT_EQ(cfg->zones[0]->fans[0]->hysteresis, 15);
+    fand_config_destroy(cfg);
+    remove(cfg_path);
+}
+
+static void test_config_zone_no_sensors(void)
+{
+    const char *cfg_path = "/tmp/fand_test_nosensors.conf";
+    FILE *f = fopen(cfg_path, "w");
+    ASSERT(f != NULL);
+    fprintf(f,
+        "zones:\n"
+        "  - fans:\n"
+        "      - path: /sys/class/hwmon/hwmon0\n"
+        "        index: 1\n"
+        "        curve:\n"
+        "          temperatures: [30, 50]\n"
+        "          speeds: [100, 255]\n"
+    );
+    fclose(f);
+    struct fand_config *cfg = fand_config_load(cfg_path);
+    ASSERT(cfg == NULL);
+    remove(cfg_path);
+}
+
 int main(void)
 {
     printf("Running fand tests...\n");
@@ -367,6 +485,13 @@ int main(void)
     test_config_load_missing_file();
     test_config_load_no_zones();
     test_config_load_multiple_zones();
+
+    test_curve_unsorted_inputs();
+    test_curve_clamping();
+    test_config_default_poll_interval();
+    test_config_custom_poll_interval();
+    test_config_fan_hysteresis();
+    test_config_zone_no_sensors();
 
     printf("\n%d passed, %d failed\n", tests_passed, tests_failed);
     return tests_failed > 0 ? 1 : 0;

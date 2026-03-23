@@ -70,6 +70,35 @@ zones:
             - 255
 ```
 
+## Configuration
+
+### Global options
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `poll_interval` | `1` | Polling interval in seconds |
+
+### Fan options
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `hysteresis` | `0` | Minimum PWM change to trigger a write (prevents flutter) |
+
+## Signal handling
+
+| Signal | Effect |
+|--------|--------|
+| `SIGTERM` / `SIGINT` | Graceful shutdown, restores automatic fan control |
+| `SIGHUP` | Reload configuration without restarting |
+
+## Usage
+
+```
+fand [config_file]
+```
+
+If no config file is specified, `fand.conf` in the current directory is used.
+
 ## Dependencies
 
 - libyaml

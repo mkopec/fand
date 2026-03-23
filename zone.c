@@ -1,4 +1,5 @@
 #include <stdlib.h>
+#include <math.h>
 
 #include "common.h"
 #include "zone.h"
@@ -9,15 +10,17 @@ static float max_sensor_val(struct zone *z)
 {
     int i;
     float sensor_val;
-    float max_sensor_val = 0;
+    float max = NAN;
 
     for (i = 0; i < z->sensors_len; ++i) {
         sensor_val = sensor_poll(z->sensors[i]);
-        if (sensor_val > max_sensor_val)
-            max_sensor_val = sensor_val;
+        if (isnan(sensor_val))
+            continue;
+        if (isnan(max) || sensor_val > max)
+            max = sensor_val;
     }
 
-    return max_sensor_val;
+    return max;
 }
 
 int zone_attach_fan(struct zone *z, struct fan *f)
@@ -46,16 +49,21 @@ int zone_attach_sensor(struct zone *z, struct sensor *s)
 
 int zone_update(struct zone *z)
 {
-    int i, status, rv;
+    int i, status;
+    int rv = 0;
     float sensor_val;
 
-    rv = 0;
     sensor_val = max_sensor_val(z);
+
+    if (isnan(sensor_val)) {
+        DBG("zone: all sensor reads failed, skipping update\n");
+        return -1;
+    }
 
     for (i = 0; i < z->fans_len; ++i) {
         status = fan_update(z->fans[i], sensor_val);
-        if (status)
-            rv = status;
+        if (status < 0)
+            rv = -1;
     }
 
     return rv;
@@ -64,6 +72,9 @@ int zone_update(struct zone *z)
 struct zone *zone_create()
 {
     struct zone *z = malloc(sizeof(struct zone));
+
+    if (!z)
+        return NULL;
 
     z->sensors_len = 0;
     z->fans_len = 0;
